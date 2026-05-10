@@ -5,15 +5,15 @@
 - Mashudul Biswas - 23457704
 
 ## Project Structure
-'''text
+```text
 ComputerNetworks/
-├── main.py          
-├── README.md        
+├── main.py # File called for execution
+├── README.md
 └── network/
-    ├── config.py    # Configuration (IPs, MACs, routing tables)
-    ├── devices.py   # Host and Router classes
-    └── protocol.py  # Layer 2, 3, 4 header definitions
-'''
+    ├── config.py      # Fixed parameter definitions
+    ├── devices.py     # Host & router classes
+    └── protocol.py    # Layer 2, 3, 4 header definitions & classes
+```
 
 ## Running Program
 
