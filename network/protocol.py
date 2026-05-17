@@ -1,4 +1,3 @@
-
 """
 protocol.py
 
@@ -112,7 +111,7 @@ class UDPSegment:
     - checksum: computed value used for simple error detection
     - segment_type: DATA or ACK
     - sequence_number: alternating bit number, either 0 or 1
-    - data: application message data
+    - data: application message data (bytes)
     """
 
     UDP_HEADER_SIZE = 9
@@ -121,13 +120,17 @@ class UDPSegment:
         self,
         source_port,
         destination_port,
-        data="",
+        data=b"",
         segment_type=DATA,
         sequence_number=0
     ):
         self.source_port = source_port
         self.destination_port = destination_port
-        self.data = data
+        # Ensure data is bytes
+        if isinstance(data, str):
+            self.data = data.encode('utf-8')
+        else:
+            self.data = data
         self.segment_type = segment_type
         self.sequence_number = sequence_number
         self.length = self.UDP_HEADER_SIZE + len(self.data)
@@ -140,18 +143,25 @@ class UDPSegment:
         This is not a real UDP checksum.
         It is a simple deterministic checksum suitable for this simulation.
         """
-        checksum_data = (
-            str(self.source_port)
-            + str(self.destination_port)
-            + str(self.length)
-            + str(self.segment_type)
-            + str(self.sequence_number)
-            + self.data
+        # Convert everything to strings for checksum calculation
+        checksum_str = (
+            str(self.source_port) +
+            str(self.destination_port) +
+            str(self.length) +
+            str(self.segment_type) +
+            str(self.sequence_number)
         )
+        
+        # Add the data (decode bytes to string for checksum)
+        try:
+            checksum_str += self.data.decode('utf-8')
+        except (UnicodeDecodeError, AttributeError):
+            # If data is bytes, convert to string representation
+            checksum_str += str(self.data)
 
         total = 0
 
-        for character in checksum_data:
+        for character in checksum_str:
             total += ord(character)
 
         return total % 65536
@@ -214,7 +224,7 @@ def create_ack_segment(source_port, destination_port, sequence_number):
     return UDPSegment(
         source_port=source_port,
         destination_port=destination_port,
-        data="",
+        data=b"",
         segment_type=ACK,
         sequence_number=sequence_number
     )

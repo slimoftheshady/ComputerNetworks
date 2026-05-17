@@ -5,7 +5,7 @@ import os
 # Makes sure network package can be imported
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from network.protocol import Frame, IPPacket, Segment
+from network.protocol import EthernetFrame, IPPacket, UDPSegment
 from network.devices import Host, Router
 from network.config import (
     # IP Addresses
@@ -62,11 +62,6 @@ class LinkSimulator:
     def send(self, frame, sender_device, sender_interface_ip):
         """
         Send a frame from a device to the connected device on the other end.
-        
-        Args:
-            frame: The Frame object to send
-            sender_device: The device sending the frame
-            sender_interface_ip: The IP address of the sending interface
         """
         sender_key = (sender_device.name, sender_interface_ip)
         
@@ -79,7 +74,6 @@ class LinkSimulator:
         receiver_name, receiver_interface_ip = receiver_key
         
         # Find the receiver device object
-        # We'll need to register devices with the link simulator
         if not hasattr(self, 'devices'):
             print(f"[Link ERROR] Devices not registered with link simulator")
             return
@@ -90,8 +84,9 @@ class LinkSimulator:
         
         receiver_device = self.devices[receiver_name]
         
-        # Deliver the frame to the receiver
-        print(f"[Link] Frame delivered from {sender_device.name} to {receiver_name}")
+        # Remove or comment out this line to hide [Link] messages
+        # print(f"[Link] Frame delivered from {sender_device.name} to {receiver_name}")
+        
         receiver_device.receive_frame(frame, receiver_interface_ip)
     
     def register_device(self, device):

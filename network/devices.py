@@ -1,4 +1,10 @@
-from network.protocol import Frame, IPPacket, Segment
+#!/usr/bin/env python3
+"""
+Device classes for the network simulator.
+Contains Host and Router classes.
+"""
+
+from network.protocol import EthernetFrame, IPPacket, UDPSegment
 from network.config import (
     PROTOCOL_UDP, TYPE_DATA, TYPE_ACK, DEFAULT_TTL,
     MAX_SEGMENT_DATA_SIZE
@@ -14,26 +20,51 @@ class NetworkNode:
         self.arp_table = {}  # {ip_address: mac_address}
         self.routing_table = None
         self.interfaces = {}  # {ip_address: mac_address}
+        self.last_lookup_ip = None  # Store the last IP looked up for Layer 2
     
     def send_frame(self, dst_mac, src_mac, payload, interface_ip):
         """Create and send a Layer 2 frame."""
         print(f"{self.name}: Layer 2: Packet received from Network Layer")
-        print(f"{self.name}: Layer 2: Destination MAC lookup for next-hop IP -> {dst_mac}")
         
-        frame = Frame(dst_mac, src_mac, payload)
+        # Show the IP in MAC lookup for all devices
+        if self.last_lookup_ip:
+            print(f"{self.name}: Layer 2: Destination MAC lookup for next-hop IP ({self.last_lookup_ip}) → {dst_mac}")
+        else:
+            print(f"{self.name}: Layer 2: Destination MAC lookup for next-hop IP -> {dst_mac}")
+        
+        frame = EthernetFrame(dst_mac, src_mac, payload)
         print(f"{self.name}: Layer 2: Frame created: SRC_MAC={src_mac}, DST_MAC={dst_mac}")
-        print(f"{self.name}: Layer 2: Frame sent")
+        
+        # Different messages for Router vs Hosts
+        if self.name == "Router R1":
+            if interface_ip == "10.0.1.1":
+                interface_display = "Interface 1"
+            else:
+                interface_display = "Interface 2"
+            print(f"{self.name}: Layer 2: Frame forwarded on {interface_display}")
+        else:
+            print(f"{self.name}: Layer 2: Frame sent")
         
         # Send through link simulator
         self.link_simulator.send(frame, self, interface_ip)
     
     def receive_frame(self, frame, interface_ip):
         """Receive a frame from the link layer and process it."""
-        print(f"{self.name}: Layer 2: Frame received on {interface_ip}")
-        
-        # Learn source MAC address
-        if frame.src_mac not in self.arp_table.values():
-            print(f"{self.name}: Layer 2: Source MAC learned: {frame.src_mac}")
+        # For Router, show interface name
+        if self.name == "Router R1":
+            if interface_ip == "10.0.1.1":
+                interface_display = "Interface 1"
+            else:
+                interface_display = "Interface 2"
+            print(f"{self.name}: Layer 2: Frame received on {interface_display}")
+            
+            # Learn source MAC address with interface info
+            print(f"{self.name}: Layer 2: Source MAC learned: {frame.source_mac} on {interface_display}")
+        else:
+            # For Hosts, just show Frame received
+            print(f"{self.name}: Layer 2: Frame received")
+            # Learn source MAC address for Hosts too
+            print(f"{self.name}: Layer 2: Source MAC learned: {frame.source_mac}")
         
         print(f"{self.name}: Layer 2: Packet delivered to Network Layer")
         
@@ -46,6 +77,9 @@ class NetworkNode:
     
     def send_packet(self, dst_ip, src_ip, ttl, protocol, payload):
         """Create and send a Layer 3 IP packet."""
+        # Create IP packet
+        ip_packet = IPPacket(src_ip, dst_ip, payload, ttl, protocol)
+        
         print(f"{self.name}: Layer 3: Segment received from Transport Layer: SRC_IP={src_ip}, DST_IP={dst_ip}, TTL={ttl}")
         print(f"{self.name}: Layer 3: Destination IP read: {dst_ip}")
         print(f"{self.name}: Layer 3: Routing table lookup performed")
@@ -53,19 +87,28 @@ class NetworkNode:
         # Route the packet
         next_hop, out_interface = self.route_packet(dst_ip)
         print(f"{self.name}: Layer 3: Next-hop IP determined: {next_hop}")
-        print(f"{self.name}: Layer 3: Outgoing interface selected")
+        
+        # For Router, show interface selection with name
+        if self.name == "Router R1":
+            if out_interface == "10.0.1.1":
+                interface_display = "Interface 1"
+            else:
+                interface_display = "Interface 2"
+            print(f"{self.name}: Layer 3: Outgoing interface selected ({interface_display})")
+        else:
+            print(f"{self.name}: Layer 3: Outgoing interface selected")
+        
+        # Store for use in Layer 2
+        self.last_lookup_ip = next_hop
         
         # Find MAC address for next hop
         dst_mac = self.get_mac_address(next_hop)
-        
-        # Create IP packet
-        ip_packet = IPPacket(src_ip, dst_ip, ttl, protocol, payload)
         
         print(f"{self.name}: Layer 3: Packet forwarded to Data Link Layer")
         
         # Send through Layer 2
         src_mac = self.interfaces[out_interface]
-        self.send_frame(dst_mac, src_mac, ip_packet.to_bytes(), out_interface)
+        self.send_frame(dst_mac, src_mac, ip_packet, out_interface)
     
     def route_packet(self, dst_ip):
         """
@@ -80,7 +123,7 @@ class NetworkNode:
                 else:
                     return route["next_hop"], route["interface"]
         
-        # No route found - default to first interface? In practice, drop packet
+        # No route found
         print(f"{self.name}: Layer 3 ERROR: No route to {dst_ip}")
         return None, None
     
@@ -90,15 +133,14 @@ class NetworkNode:
         if ip_address in self.arp_table:
             return self.arp_table[ip_address]
         
-        # In a real implementation, would send ARP request
-        # Here we'll use a simple mapping based on config
+        # Simple mapping based on config
         from network.config import HOST_A_MAC, HOST_B_MAC, R1_MAC1, R1_MAC2
         
         mac_map = {
-            "10.0.1.10": HOST_A_MAC,
-            "10.0.2.20": HOST_B_MAC,
-            "10.0.1.1": R1_MAC1,
-            "10.0.2.1": R1_MAC2
+            "10.0.1.10": HOST_A_MAC,      # AA:AA:AA:AA:AA:AA
+            "10.0.2.20": HOST_B_MAC,      # DD:DD:DD:DD:DD:DD
+            "10.0.1.1": R1_MAC1,          # BB:BB:BB:BB:BB:BB
+            "10.0.2.1": R1_MAC2           # CC:CC:CC:CC:CC:CC
         }
         
         if ip_address in mac_map:
@@ -146,7 +188,7 @@ class Host(NetworkNode):
         data_bytes = data.encode('utf-8') if isinstance(data, str) else data
         data_size = len(data_bytes)
         
-        print(f"{self.name}: Layer 4: Data received from Application Layer. Data size = {data_size}")
+        print(f"{self.name}: Layer 4: Data received from Application Layer. Data size={data_size}")
         
         # Segment data if larger than max size
         segments = []
@@ -167,35 +209,30 @@ class Host(NetworkNode):
         seq_num = segment_index % 2  # Alternate between 0 and 1
         
         # Create and send segment
-        segment = Segment(src_port, dst_port, TYPE_DATA, seq_num, data_bytes)
-        segment.checksum = segment.compute_checksum()
+        segment = UDPSegment(src_port, dst_port, data_bytes, TYPE_DATA, seq_num)
         
         print(f"{self.name}: Layer 4: Checksum computed")
         print(f"{self.name}: Layer 4: Segment created by adding transport layer header (DATA, seq={seq_num}) (encapsulation)")
         print(f"{self.name}: Layer 4: Segment sent to Network Layer")
         
         # Send via Layer 3
-        self.send_packet(dst_ip, self.ip_address, DEFAULT_TTL, PROTOCOL_UDP, segment.to_bytes())
-        
-        # For rdt2.2, we'd wait for ACK and retransmit if needed + since spec says no packet loss, we can assume ACK arrives
+        self.send_packet(dst_ip, self.ip_address, DEFAULT_TTL, PROTOCOL_UDP, segment)
 
     def receive_packet(self, ip_packet):
         """Layer 3: Receive IP packet and deliver to Layer 4."""
-        print(f"{self.name}: Layer 3: Packet received from Data Link Layer: SRC_IP={ip_packet.src_ip}, DST_IP={ip_packet.dst_ip}, TTL={ip_packet.ttl}")
-        print(f"{self.name}: Layer 3: Destination IP read: {ip_packet.dst_ip}")
+        print(f"{self.name}: Layer 3: Packet received from Data Link Layer: SRC_IP={ip_packet.source_ip}, DST_IP={ip_packet.destination_ip}, TTL={ip_packet.ttl}")
+        print(f"{self.name}: Layer 3: Destination IP read: {ip_packet.destination_ip}")
         
-        if ip_packet.dst_ip == self.ip_address:
+        if ip_packet.destination_ip == self.ip_address:
             print(f"{self.name}: Layer 3: Packet identified as local delivery")
             print(f"{self.name}: Layer 3: Segment delivered to Transport Layer")
-            self.receive_segment(ip_packet.payload)
+            self.receive_segment(ip_packet.payload, ip_packet.source_ip)
         else:
             # Not for us - but hosts shouldn't forward in this simple topology
             print(f"{self.name}: Layer 3: Packet not for this host, dropping")
     
-    def receive_segment(self, segment_bytes):
+    def receive_segment(self, segment, src_ip):
         """Layer 4: Receive segment from Layer 3."""
-        segment = Segment.from_bytes(segment_bytes)
-        
         print(f"{self.name}: Layer 4: Segment received from Network Layer")
         
         # Verify checksum
@@ -205,28 +242,26 @@ class Host(NetworkNode):
         
         print(f"{self.name}: Layer 4: Checksum verified")
         
-        if segment.seg_type == TYPE_DATA:
+        if segment.is_data():
             # Deliver data to application
             data_str = segment.data.decode('utf-8') if isinstance(segment.data, bytes) else str(segment.data)
             print(f"{self.name}: Layer 4: DATA segment delivered to Application Layer. Data size={len(segment.data)}")
             
             # Send ACK
-            self.send_ack(segment.src_port, segment.dst_port, segment.seq_num, segment.src_ip)
+            self.send_ack(segment.source_port, segment.destination_port, segment.sequence_number, src_ip)
             
-        elif segment.seg_type == TYPE_ACK:
-            print(f"{self.name}: Layer 4: ACK received: seq={segment.seq_num}")
-            # In rdt2.2, this would trigger sending next segment
+        elif segment.is_ack():
+            print(f"{self.name}: Layer 4: ACK received: seq={segment.sequence_number}")
     
     def send_ack(self, dst_port, src_port, ack_seq, dst_ip):
         """Send an ACK segment."""
-        ack_segment = Segment(src_port, dst_port, TYPE_ACK, ack_seq, b"")
-        ack_segment.checksum = ack_segment.compute_checksum()
+        ack_segment = UDPSegment(src_port, dst_port, b"", TYPE_ACK, ack_seq)
         
         print(f"{self.name}: Layer 4: Segment created by adding transport layer header (ACK, seq={ack_seq})")
         print(f"{self.name}: Layer 4: Segment sent to Network Layer")
         
         # Send via Layer 3
-        self.send_packet(dst_ip, self.ip_address, DEFAULT_TTL, PROTOCOL_UDP, ack_segment.to_bytes())
+        self.send_packet(dst_ip, self.ip_address, DEFAULT_TTL, PROTOCOL_UDP, ack_segment)
 
 
 class Router(NetworkNode):
@@ -242,36 +277,40 @@ class Router(NetworkNode):
     
     def receive_packet(self, ip_packet):
         """Layer 3: Receive packet, decrement TTL, and forward."""
-        print(f"{self.name}: Layer 3: Packet received from Data Link Layer: SRC_IP={ip_packet.src_ip}, DST_IP={ip_packet.dst_ip}, TTL={ip_packet.ttl}")
-        print(f"{self.name}: Layer 3: Destination IP read: {ip_packet.dst_ip}")
+        print(f"{self.name}: Layer 3: Packet received from Data Link Layer: SRC_IP={ip_packet.source_ip}, DST_IP={ip_packet.destination_ip}, TTL={ip_packet.ttl}")
+        print(f"{self.name}: Layer 3: Destination IP read: {ip_packet.destination_ip}")
         
         # Decrement TTL
         old_ttl = ip_packet.ttl
-        ip_packet.decrement_ttl()
-        print(f"{self.name}: Layer 3: TTL decremented: {old_ttl} -> {ip_packet.ttl}")
-        
-        if ip_packet.ttl <= 0:
+        if not ip_packet.decrement_ttl():
             print(f"{self.name}: Layer 3: TTL expired - packet dropped")
             return
         
+        print(f"{self.name}: Layer 3: TTL decremented: {old_ttl} -> {ip_packet.ttl}")
         print(f"{self.name}: Layer 3: Routing table lookup performed")
         
         # Route the packet
-        next_hop, out_interface = self.route_packet(ip_packet.dst_ip)
+        next_hop, out_interface = self.route_packet(ip_packet.destination_ip)
         print(f"{self.name}: Layer 3: Next-hop IP determined: {next_hop}")
-        print(f"{self.name}: Layer 3: Outgoing interface selected ({out_interface})")
+        
+        # Determine interface display name
+        if out_interface == "10.0.1.1":
+            interface_display = "Interface 1"
+        else:
+            interface_display = "Interface 2"
+        print(f"{self.name}: Layer 3: Outgoing interface selected ({interface_display})")
+        
+        # Store for use in Layer 2
+        self.last_lookup_ip = next_hop
         
         # Find MAC address for next hop
         dst_mac = self.get_mac_address(next_hop)
         
-        # Rebuild packet - TTL already updated
-        # Update source MAC to outgoing interface
-        src_mac = self.interfaces[out_interface]
-        
         print(f"{self.name}: Layer 3: Packet forwarded to Data Link Layer")
         
         # Forward via Layer 2
-        self.send_frame(dst_mac, src_mac, ip_packet.to_bytes(), out_interface)
+        src_mac = self.interfaces[out_interface]
+        self.send_frame(dst_mac, src_mac, ip_packet, out_interface)
     
     def get_mac_address(self, ip_address):
         """Get MAC address for an IP (simulate ARP)."""
@@ -279,14 +318,14 @@ class Router(NetworkNode):
         if ip_address in self.arp_table:
             return self.arp_table[ip_address]
         
-        # Simple mapping
+        # Simple mapping based on config
         from network.config import HOST_A_MAC, HOST_B_MAC, R1_MAC1, R1_MAC2
         
         mac_map = {
-            "10.0.1.10": HOST_A_MAC,
-            "10.0.2.20": HOST_B_MAC,
-            "10.0.1.1": R1_MAC1,
-            "10.0.2.1": R1_MAC2
+            "10.0.1.10": HOST_A_MAC,      # AA:AA:AA:AA:AA:AA
+            "10.0.2.20": HOST_B_MAC,      # DD:DD:DD:DD:DD:DD
+            "10.0.1.1": R1_MAC1,          # BB:BB:BB:BB:BB:BB
+            "10.0.2.1": R1_MAC2           # CC:CC:CC:CC:CC:CC
         }
         
         if ip_address in mac_map:

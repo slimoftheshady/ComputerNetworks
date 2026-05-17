@@ -11,7 +11,7 @@ ComputerNetworks/
 ├── README.md
 └── network/
     ├── config.py      # Fixed parameter definitions
-    ├── devices.py     # Host & router classes
+    ├── devices.py     # Host & router classes & implementation
     └── protocol.py    # Layer 2, 3, 4 header definitions & classes
 ```
 
